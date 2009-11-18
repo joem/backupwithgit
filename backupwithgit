@@ -1,0 +1,119 @@
+#!/bin/bash
+function helptext() {
+cat <<EOF
+#   ------------------------------------------------------------------
+#
+#   This script backs up (via Git) everything in the specified directory.
+#
+#       [multi-line description]
+#       [multi-line description]
+#
+#   Usage:
+#
+#       ${PROGNAME} [ARGUMENT] [COMMIT_MESSAGE]
+#
+#   Arguments:
+#
+#       help, -h, -?, --help      - Display this help text.
+#       push, -p, --push          - Push commit to specified target.
+#       status, st, -s, --status  - Display the backup status of dir.
+#
+#   External programs req'd:
+#       bash, git
+#
+#   ------------------------------------------------------------------
+EOF
+}   # end of helptext
+
+declare -r PROGNAME=$(basename $0)
+
+# ----- Determine what symlink called this script ----------------------------
+UNTRACKFLAG=0 
+case "$PROGNAME" in
+  backupdot)
+    DIR_TO_COMMIT="${HOME}/.dotfiles"   # backup this dir
+    UNTRACKFLAG=0                       # don't untrack missing files
+    PUSH_TARGET="dropbox"
+    ;;
+  backuptxt|backuphints)
+    DIR_TO_COMMIT="${HOME}/Documents/textfiles" # backup this dir
+    UNTRACKFLAG=1                       # untrack missing files
+    PUSH_TARGET="dropbox"
+    ;;
+  *)
+    # if this command was called any other way, display the following message and exit
+    #echo $"Usage: $0 {start|stop|restart|condrestart|status}"
+    echo "This script is not to be called directly, but through particular symlinks."
+    echo "You either called it by the original name, or by an invalid symlink."
+    exit 1
+esac
+
+# ----- Check command line arguments -----------------------------------------
+PUSHFLAG=0
+STATUSFLAG=0
+if [ $# -eq 0 ]; then
+  ## no arguments
+  COMMIT_MSG="Automatically commited by ${PROGNAME}."
+else
+  if [[ "$1" = "help" || "$1" = "--help" || "$1" = "-h" || "$1" = "-?" ]] ; then
+    ## argument = help, --help, -h, or -?
+    helptext
+    exit
+  elif [[ "$1" = "status" || "$1" = "st" || "$1" = "--status" || "$1" = "--st" || "$1" = "-s" ]] ; then
+    ## argument = status, st, --status, --st, -s
+    STATUSFLAG=1
+  elif [[ "$1" = "push" || "$1" = "--push" || "$1" = "-p" ]] ; then
+    ## argument = push, -p or --push
+    PUSHFLAG=1
+    if [ $# -gt 1 ]; then
+      ## argument = push, -p or --push AND more words after that
+      shift
+      COMMIT_MSG=$*
+    else
+      ## argument = push, -p or --push and nothing else
+      COMMIT_MSG="Automatically commited by ${PROGNAME}."
+    fi
+  else
+    # arguments = anything else
+    COMMIT_MSG=$*
+  fi
+fi
+
+# ----- Make sure the dir is good, then do the backup ------------------------
+echo
+if [ -d "${DIR_TO_COMMIT}" ]; then          # the dir exists
+  if [ -d "${DIR_TO_COMMIT}/.git" ]; then   # the dir is git init'd
+    cd ${DIR_TO_COMMIT}
+    if [ $STATUSFLAG -eq 1 ]; then
+      git status
+      #echo 'git status'  #DEBUG
+    else
+      echo "${PWD}:"
+      if [ $UNTRACKFLAG -eq 1 ]; then
+        # the following command checks for missing files and untracks them for future commits:
+        git ls-files -d -z | xargs -0 git update-index --remove
+        #echo "git ls-files -d -z | xargs -0 git update-index --remove" #DEBUG
+      fi
+      git add .
+      #echo 'git add .' #DEBUG
+      git commit -m "${COMMIT_MSG}"
+      #echo 'git commit -m "${COMMIT_MSG}"' #DEBUG
+      if [ $PUSHFLAG -eq 1 ]; then
+        git push ${PUSH_TARGET}
+        #echo 'git push ${PUSH_TARGET}' #DEBUG
+      fi
+    fi
+    cd - > /dev/null
+  else
+    echo "  * * * * * * * * * * * * *"
+    echo "  Sorry, the directory ${DIR_TO_COMMIT} does not appear to be set up for use with Git!"
+    echo "  * * * * * * * * * * * * *"
+  fi
+else
+  echo "  * * * * * * * * * * * * *"
+  echo "  Sorry, the directory ${DIR_TO_COMMIT} does not appear to exist!"
+  echo "  * * * * * * * * * * * * *"
+fi
+echo
+
+exit    # end of script
